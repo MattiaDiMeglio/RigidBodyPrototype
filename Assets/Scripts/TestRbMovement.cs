@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEditor;
-using TMPro;
-using UnityEngine.Rendering;
 using UnityEngine.UI;
+
+enum States { grounded, jumping, doubleJumping, falling}
 
 public class TestRbMovement : MonoBehaviour
 {
@@ -16,6 +16,7 @@ public class TestRbMovement : MonoBehaviour
     [SerializeField] private Text _velocity;
     [SerializeField] private Text _movementVec;
     [SerializeField] private Text _peak;
+    [SerializeField] private Text _state;
     [SerializeField] private float _verticalJumpBufferLength = 1f;
     [SerializeField, Range(-100f, 0f)] private float _baseGravity = -20f;
     [SerializeField, Range(-200, 0f)] private float _maxFallingSpeed = -50f;
@@ -26,6 +27,8 @@ public class TestRbMovement : MonoBehaviour
     [SerializeField, Range(0.01f, 1f)] private float peakGravityMultiplier = 0.5f;
     [SerializeField, Range(0f, 2f)] private float peakRange = 0.15f;
     [SerializeField] private float peakHorizontalMovementMultiplier = 1.3f;
+    [SerializeField] private float DoubleJumpTime = 0.5f;
+    [SerializeField] private float DoubleJumpApex = 2f;
     [Header("run")]
     [SerializeField] private float _maxRunSpeed = 20f;
     [SerializeField] private float _acceleration = 10f;
@@ -50,20 +53,26 @@ public class TestRbMovement : MonoBehaviour
     private bool _isGrounded = false;
     private bool _isJumping = false;
     private bool _isFalling = false;
+    private bool _isInPeak = false;
+    private bool _canDjump = false;
+    private bool _isDJumping = false;
     #endregion
     #region jumpvars
     private float _jumpGravity;
     private float _initialJumpVel;
+    private float _dJumpGravity;
+    private float _initialDJumpVel;
     private Vector2 _rayCastPosition;
     #endregion
     private Vector2 _finalForce = Vector2.zero;
+    private States currentState = States.falling;
     private void Awake()
     {
         if (_controls == null)
             _controls = new InputActions();
     }
 
-    private void OnEnable()
+    private void OnEnable()//abilitiamo e settiamo i callback degli input
     {
         if (_controls != null)
         {
@@ -90,33 +99,29 @@ public class TestRbMovement : MonoBehaviour
             _controls.PlayerControllerScheme.Dash.started += _ => _isDashPressed = true;
             _controls.PlayerControllerScheme.Dash.canceled += _ => _isDashPressed = false;
         }
-        float timeToApex = JumpTime * 0.5f;
-        _jumpGravity = (-2 * JumpApex) / Mathf.Pow(timeToApex, 2);
-        _initialJumpVel = (2 * JumpApex) / timeToApex;
     }
 
     // Start is called before the first frame update
     void Start()
     {
-        rb = GetComponent<Rigidbody>();
+        rb = GetComponent<Rigidbody>(); //otteniamo l'rb
     }
 
     // Update is called once per frame
     void Update()
     {
-        float timeToApex = JumpTime * 0.5f;
-        _jumpGravity = (-2 * JumpApex) / Mathf.Pow(timeToApex, 2);
-        _initialJumpVel = (2 * JumpApex) / timeToApex;
-        CheckIfGrounded();
-        HandleHorizontalMovement();
-        HandleVerticalMovement();
-        bool _isInPeak = !_isGrounded && rb.velocity.y.Between(-peakRange, peakRange);
+        
+    }
+
+    private void UpdateUI()
+    {
         _grounded.text = ("grounded: " + _isGrounded);
         _jumpPressed.text = ("jumpPressed: " + _isJumpPressed);
         _jumping.text = ("jumping: " + _isJumping);
         _velocity.text = ("velocity: " + rb.velocity);
         _movementVec.text = ("movementVec " + _movementDirection);
         _peak.text = ("isInPeak " + _isInPeak);
+        _state.text = ("currentState: " + currentState);
     }
 
     private void CheckIfGrounded()
@@ -131,9 +136,46 @@ public class TestRbMovement : MonoBehaviour
         }
     }
 
+    private void CheckState()
+    {
+        _isInPeak = !_isGrounded && rb.velocity.y.Between(-peakRange, peakRange);
+        _isFalling = rb.velocity.y < -peakRange || _isJumpPressed == false;
+        if (_isGrounded)
+        {
+            _isJumping = false;
+            _isDJumping = false;
+            _isFalling = false;
+            currentState = States.grounded;
+        }
+        switch (currentState)
+        {
+            case States.falling:
+                break;
+            case States.grounded:
+                _canDjump = false;
+                if (_isJumping)
+                    currentState = States.jumping;
+                break;
+            case States.jumping:
+                if (_isFalling && !_canDjump)
+                {
+                    _isJumpPressed = false;
+                    _canDjump = true;
+                }
+                if (_isDJumping) {
+                    _isFalling = false;
+                    currentState = States.doubleJumping;
+                }
+                break;
+            case States.doubleJumping:
+                _canDjump = false;
+                break;
+        }
+    }
+
     private void HandleHorizontalMovement()
     {
-        bool _isInPeak = !_isGrounded && rb.velocity.y.Between(-peakRange, peakRange);
+        
         float targetSpeed = _movementDirection.x * _maxRunSpeed;
         float accelRate = (!_movementDirection.x.Between(-0.2f, 0.2f)) ?  _acceleration : _deceleration;
         if (!_isGrounded)
@@ -155,47 +197,79 @@ public class TestRbMovement : MonoBehaviour
 
     private void HandleVerticalMovement()
     {
-        if (_isGrounded)
+        switch (currentState)
         {
-            if (_isJumpPressed && !_isJumping)
-            {
-                _finalForce.y = _initialJumpVel;
-                _isJumping = true;
-            }
-        }
-        else
-        {
-            if (_isJumping)
-            {
-                _isFalling = rb.velocity.y < -peakRange || _isJumpPressed == false;
-                bool _isInPeak = !_isGrounded && rb.velocity.y.Between(-peakRange, peakRange);
+            case States.falling:
+                _finalForce.y = _baseGravity;
+                break;
+            case States.grounded:
+                if (_isJumpPressed && !_isJumping)
+                {
+                    _finalForce.y = _initialJumpVel;
+                    _isJumping = true;
+                    return;
+                }
+                break;
+            case States.jumping:
+                if (_isJumpPressed && _canDjump && !_isDJumping)
+                {
+                    _finalForce.y = _initialDJumpVel;
+                    _isDJumping = true;
+                    return;
+                }
                 if (_isFalling)
                 {
                     _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _jumpGravity * JumpGravityMultiplier);
                     _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
-                } else if (_isInPeak)
+                }
+                else if (_isInPeak)
                 {
                     _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _jumpGravity * peakGravityMultiplier);
                     _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
-                    if(PhysicsExtension.Vertlet(_finalForce.y, _jumpGravity * peakGravityMultiplier) < -peakRange)
-                    {
-                        _isJumpPressed = false;
-                    }
-                } else 
+                }
+                else
                 {
                     _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _jumpGravity);
                     _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
                 }
-            }
-            else
-            {
-                _finalForce.y = _baseGravity;
-            }
+                break;
+            case States.doubleJumping:
+                if (_isFalling)
+                {
+                    _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _dJumpGravity * JumpGravityMultiplier);
+                    _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
+                }
+                else if (_isInPeak)
+                {
+                    _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _dJumpGravity * peakGravityMultiplier);
+                    _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
+                }
+                else
+                {
+                    _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _dJumpGravity);
+                    _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
+                }
+                break;
         }
     }
 
     private void FixedUpdate()
     {
+        //calcoliamo le variabili per il salto ed il doppio salto.
+        //(momentaneamente nell'update in modo che se modifichiamo l'inspector le modifiche sono riflesse
+        float timeToApex = JumpTime * 0.5f;
+        _jumpGravity = (-2 * JumpApex) / Mathf.Pow(timeToApex, 2);
+        _initialJumpVel = (2 * JumpApex) / timeToApex;
+        float timeToApexDjump = DoubleJumpTime * 0.5f;
+        _dJumpGravity = (-2 * DoubleJumpApex) / Mathf.Pow(timeToApexDjump, 2);
+        _initialDJumpVel = (2 * DoubleJumpApex) / timeToApexDjump;
+
+
+        CheckIfGrounded();//controllo grounded
+        CheckState();//simil macchina a stati banale
+        HandleHorizontalMovement();//movimento orizzontale
+        HandleVerticalMovement();//movimento verticale
+        UpdateUI();//update dell'ui, giusto per controllo
         rb.velocity = _finalForce;
     }
 
