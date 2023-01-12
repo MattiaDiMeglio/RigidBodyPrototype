@@ -17,6 +17,7 @@ public class TestRbMovement : MonoBehaviour
     [SerializeField] private Text _movementVec;
     [SerializeField] private Text _peak;
     [SerializeField] private Text _state;
+    [SerializeField] private Text _coyoteTime;
     [SerializeField] private float _verticalJumpBufferLength = 1f;
     [SerializeField, Range(-100f, 0f)] private float _baseGravity = -20f;
     [SerializeField, Range(-200, 0f)] private float _maxFallingSpeed = -50f;
@@ -35,6 +36,7 @@ public class TestRbMovement : MonoBehaviour
     [SerializeField] private float _deceleration = 20f;
     [SerializeField, Range(0f, 3f)] private float _airAccelerationMultiplier = 1.2f;
     [SerializeField, Range(0f, 1f)] private float _airDecelerationMultiplier = 0.4f;
+    [SerializeField, Range(0f, 1f)] private float _coyoteTimeBuffer = 0.2f;
     #endregion
     #region Component
     private Rigidbody rb;
@@ -46,8 +48,6 @@ public class TestRbMovement : MonoBehaviour
     private bool _isGlidePressed;
     private bool _isStompPressed;
     private bool _isDashPressed;
-    private List<Collider> _collidersList;
-    private BoxCollider _feetBoxCollider;
     #endregion
     #region bools
     private bool _isGrounded = false;
@@ -56,6 +56,8 @@ public class TestRbMovement : MonoBehaviour
     private bool _isInPeak = false;
     private bool _canDjump = false;
     private bool _isDJumping = false;
+    private bool _canStillJump = false;
+    private bool _coyoteTimerUsed = false;
     #endregion
     #region jumpvars
     private float _jumpGravity;
@@ -66,6 +68,7 @@ public class TestRbMovement : MonoBehaviour
     #endregion
     private Vector2 _finalForce = Vector2.zero;
     private States currentState = States.falling;
+    private float coyoteTimeTimer = 0f;
     private void Awake()
     {
         if (_controls == null)
@@ -122,6 +125,7 @@ public class TestRbMovement : MonoBehaviour
         _movementVec.text = ("movementVec " + _movementDirection);
         _peak.text = ("isInPeak " + _isInPeak);
         _state.text = ("currentState: " + currentState);
+        _coyoteTime.text = ("CoyoteTimeActive: " + _canStillJump);
     }
 
     private void CheckIfGrounded()
@@ -130,11 +134,27 @@ public class TestRbMovement : MonoBehaviour
         RaycastHit hit;
         _isGrounded = Physics.Raycast(_rayCastPosition, Vector2.down, out hit, _verticalJumpBufferLength + GetComponent<CapsuleCollider>().bounds.size.y / 2)
             && rb.velocity.y <= 0f;
-        if(_isGrounded && _isJumping)
+        if (_isGrounded)
         {
+            _canStillJump = false;
+            coyoteTimeTimer = 0f;
+            _coyoteTimerUsed = false;
             _isJumping = false;
+            _isDJumping = false;
+        }
+        if (!_isGrounded && _canStillJump && Time.time > coyoteTimeTimer + _coyoteTimeBuffer)
+        {
+            _canStillJump = false;
+            coyoteTimeTimer = 0f;
+            _coyoteTimerUsed = true;
+        }
+        if(!_isGrounded && !_canStillJump && !_coyoteTimerUsed)
+        {
+            _canStillJump = true;
+            coyoteTimeTimer = Time.time;
         }
     }
+
 
     private void CheckState()
     {
@@ -142,19 +162,23 @@ public class TestRbMovement : MonoBehaviour
         _isFalling = rb.velocity.y < -peakRange || _isJumpPressed == false;
         if (_isGrounded)
         {
-            _isJumping = false;
-            _isDJumping = false;
             _isFalling = false;
             currentState = States.grounded;
         }
         switch (currentState)
         {
             case States.falling:
+                if (_isJumping)
+                    currentState = States.jumping;
                 break;
             case States.grounded:
                 _canDjump = false;
                 if (_isJumping)
                     currentState = States.jumping;
+                if (!_isGrounded && !_isJumping)
+                {
+                    currentState = States.falling;
+                }
                 break;
             case States.jumping:
                 if (_isFalling && !_canDjump)
@@ -190,9 +214,7 @@ public class TestRbMovement : MonoBehaviour
         }
         float speedDif = targetSpeed - rb.velocity.x;
         float resultingForce = PhysicsExtension.Vertlet(rb.velocity.x, speedDif * accelRate);
-        //rb.AddForce(Vector2.right * resultingForce, ForceMode.Force);
         _finalForce.x = resultingForce;
-        //_finalForce.x = Mathf.Clamp(_finalForce.x, -_maxRunSpeed, _maxRunSpeed);
     }
 
     private void HandleVerticalMovement()
@@ -200,6 +222,12 @@ public class TestRbMovement : MonoBehaviour
         switch (currentState)
         {
             case States.falling:
+                if (_isJumpPressed && !_isJumping && _canStillJump)
+                {
+                    _finalForce.y = _initialJumpVel;
+                    _isJumping = true;
+                    return;
+                }
                 _finalForce.y = _baseGravity;
                 break;
             case States.grounded:
@@ -219,6 +247,7 @@ public class TestRbMovement : MonoBehaviour
                 }
                 if (_isFalling)
                 {
+                    _isJumpPressed = false;
                     _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _jumpGravity * JumpGravityMultiplier);
                     _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
                 }
@@ -236,6 +265,7 @@ public class TestRbMovement : MonoBehaviour
             case States.doubleJumping:
                 if (_isFalling)
                 {
+                    _isJumpPressed = false;
                     _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _dJumpGravity * JumpGravityMultiplier);
                     _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
                 }
@@ -278,6 +308,4 @@ public class TestRbMovement : MonoBehaviour
         Gizmos.matrix = transform.localToWorldMatrix;
         Handles.DrawLine(_rayCastPosition, _rayCastPosition + (Vector2.down * (_verticalJumpBufferLength + GetComponent<CapsuleCollider>().bounds.size.y / 2)));
     }
-
-
 }
