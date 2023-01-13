@@ -61,6 +61,7 @@ public class TestRbMovement : MonoBehaviour
     private bool _isDJumping = false;
     private bool _canStillJump = false;
     private bool _coyoteTimerUsed = false;
+    private bool _isGliding = false;
     #endregion
     #region jumpvars
     private float _jumpGravity;
@@ -168,6 +169,7 @@ public class TestRbMovement : MonoBehaviour
         if (_isGrounded)
         {
             _isFalling = false;
+            _isGliding = false;
             currentState = States.grounded;
         }
         switch (currentState)
@@ -175,7 +177,7 @@ public class TestRbMovement : MonoBehaviour
             case States.falling:
                 if (_isJumping)
                     currentState = States.jumping;
-                if (_isGlidePressed)
+                if (_isGliding)
                     currentState = States.gliding;
                 break;
             case States.grounded:
@@ -188,7 +190,7 @@ public class TestRbMovement : MonoBehaviour
                 }
                 break;
             case States.jumping:
-                if (_isGlidePressed)
+                if (_isGliding)
                 {
                     currentState = States.gliding;
                     break;
@@ -205,7 +207,7 @@ public class TestRbMovement : MonoBehaviour
                 break;
             case States.doubleJumping:
                 _canDjump = false;
-                if (_isGlidePressed)
+                if (_isGliding)
                 {
                     currentState = States.gliding;
                     break;
@@ -220,6 +222,7 @@ public class TestRbMovement : MonoBehaviour
                     _coyoteTimerUsed = false;
                     _isJumping = false;
                     _isDJumping = false;
+                    _isGliding = false;
                 }
                 break;
         }
@@ -261,6 +264,12 @@ public class TestRbMovement : MonoBehaviour
                     _isJumping = true;
                     return;
                 }
+                if (_isGlidePressed)
+                {
+                    _finalForce.y = 0f;
+                    _isGliding = true;
+                    return;
+                }
                 _finalForce.y = _baseGravity;
                 break;
             case States.grounded:
@@ -276,6 +285,12 @@ public class TestRbMovement : MonoBehaviour
                 {
                     _finalForce.y = _initialDJumpVel;
                     _isDJumping = true;
+                    return;
+                }
+                if (_isGlidePressed)
+                {
+                    _finalForce.y = 0f;
+                    _isGliding = true;
                     return;
                 }
                 if (_isFalling)
@@ -296,6 +311,12 @@ public class TestRbMovement : MonoBehaviour
                 }
                 break;
             case States.doubleJumping:
+                if (_isGlidePressed)
+                {
+                    _finalForce.y = 0f;
+                    _isGliding = true;
+                    return;
+                }
                 if (_isFalling)
                 {
                     _isJumpPressed = false;
@@ -314,13 +335,7 @@ public class TestRbMovement : MonoBehaviour
                 }
                 break;
             case States.gliding:
-                if(rb.velocity.y > 0f)
-                {
-                    _finalForce.y = PhysicsExtension.Vertlet(0f, _baseGravity * _glideGravityMultiplier);
-                } else
-                {
-                    _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _baseGravity * _glideGravityMultiplier);
-                }
+                _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _baseGravity * _glideGravityMultiplier);
                 _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
                 break;
         }
