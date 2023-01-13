@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 using UnityEditor;
 using UnityEngine.UI;
 
-enum States { grounded, jumping, doubleJumping, falling}
+enum States { grounded, jumping, doubleJumping, falling, gliding}
 
 public class TestRbMovement : MonoBehaviour
 {
@@ -37,6 +37,9 @@ public class TestRbMovement : MonoBehaviour
     [SerializeField, Range(0f, 3f)] private float _airAccelerationMultiplier = 1.2f;
     [SerializeField, Range(0f, 1f)] private float _airDecelerationMultiplier = 0.4f;
     [SerializeField, Range(0f, 1f)] private float _coyoteTimeBuffer = 0.2f;
+    [Header("glide")]
+    [SerializeField, Range(0.1f, 1f)] private float _glideGravityMultiplier = 0.4f;
+    [SerializeField, Range(0.1f, 5f)] private float _glideHorizontalVelocityMultiplier = 1.2f;
     #endregion
     #region Component
     private Rigidbody rb;
@@ -141,17 +144,19 @@ public class TestRbMovement : MonoBehaviour
             _coyoteTimerUsed = false;
             _isJumping = false;
             _isDJumping = false;
-        }
-        if (!_isGrounded && _canStillJump && Time.time > coyoteTimeTimer + _coyoteTimeBuffer)
+        }else
         {
-            _canStillJump = false;
-            coyoteTimeTimer = 0f;
-            _coyoteTimerUsed = true;
-        }
-        if(!_isGrounded && !_canStillJump && !_coyoteTimerUsed)
-        {
-            _canStillJump = true;
-            coyoteTimeTimer = Time.time;
+            if(_canStillJump && Time.time > coyoteTimeTimer + _coyoteTimeBuffer)
+            {
+                _canStillJump = false;
+                coyoteTimeTimer = 0f;
+                _coyoteTimerUsed = true;
+            }
+            if(!_canStillJump && !_coyoteTimerUsed)
+            {
+                _canStillJump = true;
+                coyoteTimeTimer = Time.time;
+            }
         }
     }
 
@@ -170,6 +175,8 @@ public class TestRbMovement : MonoBehaviour
             case States.falling:
                 if (_isJumping)
                     currentState = States.jumping;
+                if (_isGlidePressed)
+                    currentState = States.gliding;
                 break;
             case States.grounded:
                 _canDjump = false;
@@ -181,6 +188,11 @@ public class TestRbMovement : MonoBehaviour
                 }
                 break;
             case States.jumping:
+                if (_isGlidePressed)
+                {
+                    currentState = States.gliding;
+                    break;
+                }
                 if (_isFalling && !_canDjump)
                 {
                     _isJumpPressed = false;
@@ -193,24 +205,45 @@ public class TestRbMovement : MonoBehaviour
                 break;
             case States.doubleJumping:
                 _canDjump = false;
+                if (_isGlidePressed)
+                {
+                    currentState = States.gliding;
+                    break;
+                }
+                break;
+            case States.gliding:
+                if (!_isGlidePressed)
+                {
+                    currentState = States.falling;
+                    _canStillJump = false;
+                    coyoteTimeTimer = 0f;
+                    _coyoteTimerUsed = false;
+                    _isJumping = false;
+                    _isDJumping = false;
+                }
                 break;
         }
     }
 
     private void HandleHorizontalMovement()
     {
-        
+
         float targetSpeed = _movementDirection.x * _maxRunSpeed;
-        float accelRate = (!_movementDirection.x.Between(-0.2f, 0.2f)) ?  _acceleration : _deceleration;
+        float accelRate = (!_movementDirection.x.Between(-0.2f, 0.2f)) ? _acceleration : _deceleration;
         if (!_isGrounded)
         {
-            accelRate = (!_movementDirection.x.Between(-0.2f, 0.2f)) ? _acceleration * _airAccelerationMultiplier 
-                : _deceleration * _airDecelerationMultiplier; 
+            accelRate = (!_movementDirection.x.Between(-0.2f, 0.2f)) ? _acceleration * _airAccelerationMultiplier
+                : _deceleration * _airDecelerationMultiplier;
         }
-        if(_isJumping && _isInPeak)
+        if (_isJumping && _isInPeak)
         {
             accelRate *= peakHorizontalMovementMultiplier;
             targetSpeed *= peakHorizontalMovementMultiplier;
+        }
+        if(currentState == States.gliding)
+        {
+            accelRate *= _glideHorizontalVelocityMultiplier;
+            targetSpeed *= _glideHorizontalVelocityMultiplier;
         }
         float speedDif = targetSpeed - rb.velocity.x;
         float resultingForce = PhysicsExtension.Vertlet(rb.velocity.x, speedDif * accelRate);
@@ -279,6 +312,16 @@ public class TestRbMovement : MonoBehaviour
                     _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _dJumpGravity);
                     _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
                 }
+                break;
+            case States.gliding:
+                if(rb.velocity.y > 0f)
+                {
+                    _finalForce.y = PhysicsExtension.Vertlet(0f, _baseGravity * _glideGravityMultiplier);
+                } else
+                {
+                    _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _baseGravity * _glideGravityMultiplier);
+                }
+                _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
                 break;
         }
     }
