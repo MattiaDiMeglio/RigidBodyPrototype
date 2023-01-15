@@ -6,7 +6,7 @@ public class WallJump : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
-            other.GetComponent<TestRbMovement>().InWallJump();
+            other.GetComponent<TestRbMovement>().InWallJump(transform.position.x);
         }
     }
 

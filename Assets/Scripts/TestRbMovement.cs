@@ -45,6 +45,7 @@ public class TestRbMovement : MonoBehaviour
     [Header("walljump")]
     [SerializeField] private float _wallJumpTimer = 1.2f;
     [SerializeField, Range(0f, 1f)] private float _onWallGravityMultiplier = 0.2f;
+    [SerializeField] private float _wallJumpLerpAmount = 0.4f;
     #endregion
     #region Component
     private Rigidbody rb;
@@ -69,17 +70,20 @@ public class TestRbMovement : MonoBehaviour
     private bool _coyoteTimerUsed = false;
     private bool _isGliding = false;
     private bool _touchingWall = false;
+    private bool _isWallJumping = false;
     #endregion
     #region jumpvars
     private float _jumpGravity;
     private float _initialJumpVel;
     private float _dJumpGravity;
     private float _initialDJumpVel;
+    private float _wallJumpLerp = 0f;
     private Vector2 _rayCastPosition;
     #endregion
     private Vector2 _finalForce = Vector2.zero;
     private States currentState = States.falling;
     private float coyoteTimeTimer = 0f;
+    private float wallDirection = 0f;
 
 
     private void Awake()
@@ -170,6 +174,8 @@ public class TestRbMovement : MonoBehaviour
         if (_touchingWall && currentState!=States.onWall)
         {
             currentState = States.onWall;
+            _isJumping = false;
+            _isJumpPressed = false;
             _onEnter = true;
         }
         switch (currentState)
@@ -198,7 +204,6 @@ public class TestRbMovement : MonoBehaviour
                     _onEnter = true;
                     return;
                 }
-
                 Gravity(1);
                 break;
             case States.grounded:
@@ -219,12 +224,19 @@ public class TestRbMovement : MonoBehaviour
                     _onEnter = true;
                     return;
                 }
-                Run(true, 1f, 1f, 1f);
+                Run(true, 1f, 1f, 1f, 1f);
                 break;
             case States.jumping:
                 if (_onEnter)
                 {
-                    _finalForce = new Vector2(rb.velocity.x, _initialJumpVel);
+                    Debug.Log("wj " + _isWallJumping);
+                    if (_isWallJumping)
+                    {
+                        _finalForce = new Vector2(-1 * wallDirection * _maxRunSpeed, _initialJumpVel);
+                    } else
+                    {
+                        _finalForce = new Vector2(rb.velocity.x, _initialJumpVel);
+                    }
                     _isJumping = true;
                     _onEnter = false;
                     return;
@@ -233,11 +245,15 @@ public class TestRbMovement : MonoBehaviour
                 {
                     currentState = States.grounded;
                     _isFalling = false;
+                    _isWallJumping = false;
+                    _isJumping = false;
                     _onEnter = true;
                 }
                 if (_isGlidePressed)
                 {
                     currentState = States.gliding;
+                    _isWallJumping = false;
+                    _isJumping = false;
                     _onEnter = true;
                     return;
                 }
@@ -256,8 +272,12 @@ public class TestRbMovement : MonoBehaviour
                 {
                     _isJumpPressed = false;
                 }
+                if(_isWallJumping && _wallJumpLerp >= 1f)
+                {
+                    _isWallJumping = false;
+                }
                 Jump(_jumpGravity, JumpGravityMultiplier);
-                Run(true, _airAccelerationMultiplier, _airDecelerationMultiplier, _isInPeak ? peakHorizontalMovementMultiplier : 1);
+                Run(true, _airAccelerationMultiplier, _airDecelerationMultiplier, _isInPeak ? peakHorizontalMovementMultiplier : 1, _isWallJumping ? (_wallJumpLerp + _wallJumpLerpAmount) : 1f);
                 break;
             case States.doubleJumping:
                 if (_onEnter)
@@ -271,6 +291,7 @@ public class TestRbMovement : MonoBehaviour
                 {
                     currentState = States.grounded;
                     _isJumping = false;
+                    _isWallJumping = false;
                     _onEnter = true;
                     return;
                 }
@@ -278,6 +299,7 @@ public class TestRbMovement : MonoBehaviour
                 {
                     currentState = States.gliding;
                     _onEnter = true;
+                    _isWallJumping = false;
                     return;
                 }
                 if (_isFalling)
@@ -285,7 +307,7 @@ public class TestRbMovement : MonoBehaviour
                     _isJumpPressed = false;
                 }
                 Jump(_dJumpGravity, DoubleJumpGravityMultiplier);
-                Run(true, _airAccelerationMultiplier, _airDecelerationMultiplier, _isInPeak ? peakHorizontalMovementMultiplier : 1);
+                Run(true, _airAccelerationMultiplier, _airDecelerationMultiplier, _isInPeak ? peakHorizontalMovementMultiplier : 1, 1f);
                 break;
             case States.gliding:
                 if (_onEnter)
@@ -314,17 +336,34 @@ public class TestRbMovement : MonoBehaviour
                     return;
                 }
                 Gravity(_glideGravityMultiplier);
-                Run(true, _airAccelerationMultiplier, _airDecelerationMultiplier, _glideHorizontalVelocityMultiplier);
+                Run(true, _airAccelerationMultiplier, _airDecelerationMultiplier, _glideHorizontalVelocityMultiplier, 1f);
                 break;
             case States.onWall:
                 if (_onEnter)
                 {
                     _finalForce = Vector2.zero;
+                    _canDjump = false;
                     _onEnter = false;
                     return;
                 }
+                if (_isGrounded)
+                {
+                    currentState = States.grounded;
+                    _touchingWall = false;
+                    _onEnter = true;
+                    return;
+                }
+                if (_isJumpPressed)
+                {
+                    _isWallJumping = true;
+                    _touchingWall = false;
+                    _wallJumpLerp = 0f;
+                    currentState = States.jumping;
+                    _onEnter = true;
+                    return;
+                }
                 Gravity(_onWallGravityMultiplier);
-                Run(false, 1, 1, 1);
+                Run(false, 1f, 1f, 1f, 1f);
                 break;
         }
     }
@@ -470,7 +509,7 @@ public class TestRbMovement : MonoBehaviour
         _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
     }
 
-    private void Run(bool canMove, float accelerationMultiplier, float decelerationMultiplier, float velocityMultiplier)
+    private void Run(bool canMove, float accelerationMultiplier, float decelerationMultiplier, float velocityMultiplier, float lerpRate)
     {
         if (!canMove)
         {
@@ -482,14 +521,20 @@ public class TestRbMovement : MonoBehaviour
             : _deceleration * decelerationMultiplier;
         accelRate *= velocityMultiplier;
         targetSpeed *= velocityMultiplier;
+        targetSpeed = Mathf.Lerp(rb.velocity.x, targetSpeed, lerpRate);
         float speedDif = targetSpeed - rb.velocity.x;
         float resultingForce = PhysicsExtension.Vertlet(rb.velocity.x, speedDif * accelRate);
         _finalForce.x = resultingForce;
     }
 
-    public void InWallJump()
+    public void InWallJump(float posX)
     {
-        _touchingWall = true;
+        if(wallDirection != posX - transform.position.x)
+        {
+            wallDirection = Mathf.Sign(posX - transform.position.x);
+            _touchingWall = true;
+            _wallJumpLerp = 0f;
+        }
     }
 
     public void OutWallJump()
