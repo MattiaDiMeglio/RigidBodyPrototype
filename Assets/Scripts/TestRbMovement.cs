@@ -229,7 +229,6 @@ public class TestRbMovement : MonoBehaviour
             case States.jumping:
                 if (_onEnter)
                 {
-                    Debug.Log("wj " + _isWallJumping);
                     if (_isWallJumping)
                     {
                         _finalForce = new Vector2(-1 * wallDirection * _maxRunSpeed, _initialJumpVel);
