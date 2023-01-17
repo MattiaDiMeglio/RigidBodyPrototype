@@ -69,6 +69,7 @@ public class TestRbMovement : MonoBehaviour
     private bool _canStillJump = false;
     private bool _coyoteTimerUsed = false;
     private bool _isGliding = false;
+    public bool IsGliding => _isGliding;
     private bool _touchingWall = false;
     private bool _isWallJumping = false;
     #endregion
@@ -176,6 +177,7 @@ public class TestRbMovement : MonoBehaviour
             currentState = States.onWall;
             _isJumping = false;
             _isJumpPressed = false;
+            _isGliding = false;
             _onEnter = true;
         }
         switch (currentState)
@@ -204,6 +206,7 @@ public class TestRbMovement : MonoBehaviour
                     _onEnter = true;
                     return;
                 }
+                Run(true, _airAccelerationMultiplier, _airDecelerationMultiplier, 1f, 1f);
                 Gravity(1);
                 break;
             case States.grounded:
@@ -232,10 +235,15 @@ public class TestRbMovement : MonoBehaviour
                     if (_isWallJumping)
                     {
                         _finalForce = new Vector2(-1 * wallDirection * _maxRunSpeed, _initialJumpVel);
+                        rb.AddForce(_finalForce, ForceMode.Impulse);
                     } else
                     {
                         _finalForce = new Vector2(rb.velocity.x, _initialJumpVel);
+                        rb.AddForce(_initialJumpVel * Vector2.up, ForceMode.Impulse);
                     }
+                    //rb.AddForce((_initialJumpVel / (JumpTime * .5f)) * Vector2.up, ForceMode.Force);
+                    //rb.AddForce(((_initialJumpVel - rb.velocity.y)/Time.fixedDeltaTime) * Vector2.up , ForceMode.Force);
+                    //rb.velocity = _finalForce;
                     _isJumping = true;
                     _onEnter = false;
                     return;
@@ -281,7 +289,10 @@ public class TestRbMovement : MonoBehaviour
             case States.doubleJumping:
                 if (_onEnter)
                 {
-                    _finalForce = new Vector2(rb.velocity.x, _initialDJumpVel);
+                    _finalForce = new Vector2(rb.velocity.x, _initialDJumpVel/Time.deltaTime);
+                    rb.AddForce(((_initialDJumpVel - rb.velocity.y)) * Vector2.up, ForceMode.Impulse);
+                    //rb.AddForce(((_initialDJumpVel - rb.velocity.y ) * (_initialDJumpVel / (DoubleJumpTime *.5f))) * Vector2.up, ForceMode.Force);
+                    //rb.AddForce(_initialDJumpVel * Vector2.up, ForceMode.Impulse);
                     _canDjump = false;
                     _onEnter = false;
                     return;
@@ -312,7 +323,9 @@ public class TestRbMovement : MonoBehaviour
                 if (_onEnter)
                 {
                     _finalForce = Vector2.zero;
+                    rb.velocity = _finalForce;
                     _onEnter = false;
+                    _isGliding = true;
                     return;
                 }
                 if (_isGrounded)
@@ -341,6 +354,7 @@ public class TestRbMovement : MonoBehaviour
                 if (_onEnter)
                 {
                     _finalForce = Vector2.zero;
+                    rb.velocity = _finalForce;
                     _canDjump = false;
                     _onEnter = false;
                     return;
@@ -473,7 +487,13 @@ public class TestRbMovement : MonoBehaviour
         //HandleHorizontalMovement();//movimento orizzontale
         //HandleVerticalMovement();//movimento verticale
         UpdateUI();//update dell'ui, giusto per controllo
-        rb.velocity = _finalForce;
+        if(rb.velocity.y < _maxFallingSpeed)
+        {
+            rb.velocity = new Vector2(rb.velocity.x, _maxFallingSpeed);
+        }
+        Debug.Log("vel: " + Time.fixedDeltaTime);
+        //rb.AddForce(_finalForce, ForceMode.Force);
+        //rb.velocity = _finalForce;
     }
 
     private void OnDrawGizmos()
@@ -489,23 +509,28 @@ public class TestRbMovement : MonoBehaviour
             _isJumpPressed = false;
             _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, gravity * gMultiplier);
             _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
+            rb.AddForce(Vector2.up * gravity * gMultiplier * .5f, ForceMode.Acceleration);
         }
         else if (_isInPeak)
         {
             _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, gravity * peakGravityMultiplier);
             _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
+            rb.AddForce(Vector2.up * gravity * peakGravityMultiplier * .5f, ForceMode.Acceleration);
         }
         else
         {
             _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, gravity);
             _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
+            rb.AddForce(Vector2.up * gravity * .5f, ForceMode.Acceleration);
         }
+        
     }
 
     private void Gravity(float gravityMultiplier)
     {
         _finalForce.y = PhysicsExtension.Vertlet(rb.velocity.y, _baseGravity * gravityMultiplier);
         _finalForce.y = Mathf.Max(_finalForce.y, _maxFallingSpeed);
+        rb.AddForce(Vector2.up * _baseGravity * gravityMultiplier * .5f, ForceMode.Acceleration);
     }
 
     private void Run(bool canMove, float accelerationMultiplier, float decelerationMultiplier, float velocityMultiplier, float lerpRate)
@@ -523,7 +548,8 @@ public class TestRbMovement : MonoBehaviour
         targetSpeed = Mathf.Lerp(rb.velocity.x, targetSpeed, lerpRate);
         float speedDif = targetSpeed - rb.velocity.x;
         float resultingForce = PhysicsExtension.Vertlet(rb.velocity.x, speedDif * accelRate);
-        _finalForce.x = resultingForce;
+        _finalForce.x = speedDif * accelRate;// resultingForce;
+        rb.AddForce( Vector2.right * _finalForce, ForceMode.Force);
     }
 
     public void InWallJump(float posX)

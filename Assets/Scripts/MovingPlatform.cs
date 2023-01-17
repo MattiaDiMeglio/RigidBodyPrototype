@@ -17,7 +17,7 @@ public class MovingPlatform : MonoBehaviour
     private void FixedUpdate()
     {
         newPos.x = Mathf.Lerp(startingPos.x, point.position.x, Mathf.Sin(Time.time * 0.5f));
-        GetComponent<Rigidbody>().MovePosition(newPos);
+        transform.position = newPos;
     }
 
 
