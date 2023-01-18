@@ -10,7 +10,7 @@ public class Geyser : MonoBehaviour
     {
         if(other.CompareTag("Player") && other.GetComponent<TestRbMovement>().IsGliding)
         {
-            other.GetComponent<Rigidbody>().AddForce(Vector2.up * (_upForce - other.GetComponent<Rigidbody>().velocity.y) * 2f, ForceMode.Acceleration);
+            other.GetComponent<Rigidbody>().AddForce(Vector2.up * (-other.GetComponent<Rigidbody>().velocity.y), ForceMode.Impulse);
         }
     }
 

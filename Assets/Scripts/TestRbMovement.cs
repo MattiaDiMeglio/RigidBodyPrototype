@@ -322,8 +322,8 @@ public class TestRbMovement : MonoBehaviour
             case States.gliding:
                 if (_onEnter)
                 {
-                    _finalForce = Vector2.zero;
-                    rb.velocity = _finalForce;
+                    _finalForce = -rb.velocity;
+                    rb.AddForce(_finalForce, ForceMode.Impulse);
                     _onEnter = false;
                     _isGliding = true;
                     return;
@@ -332,6 +332,7 @@ public class TestRbMovement : MonoBehaviour
                 {
                     currentState = States.grounded;
                     _isGliding = false;
+                    _isGlidePressed = false;
                     _onEnter = true;
                     return;
                 }
@@ -353,8 +354,8 @@ public class TestRbMovement : MonoBehaviour
             case States.onWall:
                 if (_onEnter)
                 {
-                    _finalForce = Vector2.zero;
-                    rb.velocity = _finalForce;
+                    _finalForce = new Vector2(rb.velocity.x, -rb.velocity.y);
+                    rb.AddForce(_finalForce, ForceMode.Impulse);
                     _canDjump = false;
                     _onEnter = false;
                     return;
@@ -374,6 +375,14 @@ public class TestRbMovement : MonoBehaviour
                     currentState = States.jumping;
                     _onEnter = true;
                     return;
+                }
+                if (!_touchingWall)
+                {
+                    _isWallJumping = true;
+                    _touchingWall = false;
+                    _wallJumpLerp = 0f;
+                    currentState = States.falling;
+                    _onEnter = true;
                 }
                 Gravity(_onWallGravityMultiplier);
                 Run(false, 1f, 1f, 1f, 1f);
