@@ -2,7 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine.UI;
 using System.Runtime.CompilerServices;
 
@@ -45,7 +47,7 @@ public class TestRbMovement : MonoBehaviour
     [Header("walljump")]
     [SerializeField] private float _wallJumpTimer = 1.2f;
     [SerializeField, Range(0f, 1f)] private float _onWallGravityMultiplier = 0.2f;
-    [SerializeField] private float _wallJumpLerpAmount = 0.4f;
+    [SerializeField, Range(0f, 1f)] private float _wallJumpLerpAmount = 0.4f;
     #endregion
     #region Component
     private Rigidbody rb;
@@ -185,7 +187,7 @@ public class TestRbMovement : MonoBehaviour
             case States.falling:
                 if (_onEnter)
                 {
-                    _finalForce.y = _baseGravity;
+                    Gravity(1);
                     _onEnter = false;
                     return;
                 }
@@ -505,11 +507,14 @@ public class TestRbMovement : MonoBehaviour
         //rb.velocity = _finalForce;
     }
 
+#if UNITY_EDITOR
+
     private void OnDrawGizmos()
     {
         Gizmos.matrix = transform.localToWorldMatrix;
         Handles.DrawLine(_rayCastPosition, _rayCastPosition + (Vector2.down * (_verticalJumpBufferLength + GetComponent<CapsuleCollider>().bounds.size.y / 2)));
     }
+#endif
 
     private void Jump(float gravity, float gMultiplier)
     {
@@ -546,7 +551,7 @@ public class TestRbMovement : MonoBehaviour
     {
         if (!canMove)
         {
-            _finalForce.x = 0f;
+            rb.AddForce(Vector2.right * -rb.velocity.x, ForceMode.Force);
             return;
         }
         float targetSpeed = _movementDirection.x * _maxRunSpeed;
@@ -556,9 +561,8 @@ public class TestRbMovement : MonoBehaviour
         targetSpeed *= velocityMultiplier;
         targetSpeed = Mathf.Lerp(rb.velocity.x, targetSpeed, lerpRate);
         float speedDif = targetSpeed - rb.velocity.x;
-        float resultingForce = PhysicsExtension.Vertlet(rb.velocity.x, speedDif * accelRate);
         _finalForce.x = speedDif * accelRate;// resultingForce;
-        rb.AddForce( Vector2.right * _finalForce, ForceMode.Force);
+        rb.AddForce(Vector2.right * _finalForce, ForceMode.Force);
     }
 
     public void InWallJump(float posX)
